@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8" />
+    <title>Exchange Calculator</title>
+
+    <script type="text/javascript" src="https://code.jquery.com/jquery-3.2.1.js"></script>
+
+</head>
+
+<body>
+
+    <script type="text/javascript">
+
+        $(document).ready(function () {
+
+            var ws_bitmex = new WebSocket("wss://www.bitmex.com/realtime?subscribe=trade:XBTUSD");
+            var lock = false; //true:開提醒 ,false 關提醒
+            var Now_price = 0;
+            var Input_price = 0;
+
+            N_on = function () {
+                lock = true;
+                reNewPrice();
+                if (Now_price > Input_price) {
+                    $('#chatAudio')[0].play(); //播放声音
+                }
+                console.log('開');
+            };
+
+            N_off = function () {
+                lock = false;
+                reNewPrice();
+                $('#chatAudio')[0].pause();
+                console.log('關');
+            };
+
+            ws_bitmex.onopen = function (evt) {
+                console.log("Connection open ...");
+            };
+
+            ws_bitmex.onmessage = function (evt) {
+                //var txt = evt.data;
+                // console.log("Received Message: " + evt.data);
+
+                var txt = JSON.parse(evt.data);
+                var price = txt.data[0].price;
+
+                if (Input_price) {
+                    Input_price = $('#BMP_Input').val();
+                }
+
+                console.log(price);
+                if (price) {
+                    Now_price = price;
+                    $('#BMP').text(price);
+                    if (price > Input_price && lock) {
+                        $('#chatAudio')[0].play(); //播放声音
+                    }
+                }
+            };
+
+            ws_bitmex.onclose = function (evt) {
+                console.log("Connection closed.");
+            };
+
+
+            var fee1 = 1 - 0.15 / 100;
+            var fee2 = 1 - 0.25 / 100;
+            $("#p_Buy").val(0);
+            $("#p_BuyAm").val(1);
+            $("#10p").text(0);
+            $("#20p").text(0);
+            $("#30p").text(0);
+
+            $("#p_Buy").change(function () {
+                var b = $("#p_Buy").val();
+                var a = $("#p_BuyAm").val();
+                if (b != 0 && a != 0) {
+                    compute(b, a);
+                }
+            });
+            $("#p_BuyAm").change(function () {
+                var b = $("#p_Buy").val();
+                var a = $("#p_BuyAm").val();
+                if (b != 0 && a != 0) {
+                    compute(b, a);
+                }
+            });
+
+            function compute(b, a) {
+                var b_avg15 = (b * a) / (a * fee1);
+                var b_avg25 = (b * a) / (a * fee2);
+                var s_avg15 = (b * a) / (a * fee1 * fee1);
+                var s_avg25 = (b * a) / (a * fee2 * fee2);
+
+                $("#p_BuyOuput15").val(b_avg15.toFixed(4));
+                $("#p_BuyOuput25").val(b_avg25.toFixed(4));
+                $("#p_sellOuput15").val(s_avg15.toFixed(4));
+                $("#p_sellOuput25").val(s_avg25.toFixed(4));
+                $("#10p").text((s_avg15 * 1.1).toFixed(4));
+                $("#20p").text((s_avg15 * 1.2).toFixed(4));
+                $("#30p").text((s_avg15 * 1.3).toFixed(4));
+
+            };
+
+            function reNewPrice() {
+                Now_price = $('#BMP').text();
+                Input_price = $('#BMP_Input').val();
+            };
+
+        });
+    </script>
+    <script type="text/javascript">
+        $(document).ready(function () {
+            var future_name="BTC-1225"
+            var move_name = "BTC-MOVE-2020Q4"
+            var ws_ftx = new WebSocket("wss://ftx.com/ws/");
+            channel= "ticker"
+            var future= {
+                "op": "subscribe",
+                'channel': channel, 
+                'market': future_name
+            }
+            var move= {
+                "op": "subscribe",
+                'channel': channel, 
+                'market': move_name
+            }
+            var f_price=0.0
+            var m_price=0.0
+            var strike_price=0.0
+
+            ws_ftx.onopen = function (evt) {
+                console.log("Connection open ...");
+                ws_ftx.send(JSON.stringify(future))
+                ws_ftx.send(JSON.stringify(move))
+            };
+
+            ws_ftx.onmessage = function (evt) {
+                var txt = JSON.parse(evt.data);
+                console.log(evt.data)
+                if(txt.channel == channel && txt.type=="update" ){
+                    last_price= txt.data.last;
+                    if(txt.market == future_name){
+                        $("#btc_price").text(last_price);
+                        f_price=last_price;
+                    }
+                    if(txt.market == move_name){
+                        $("#move_price").text(last_price);
+                        m_price=last_price;
+                    }
+                    if(f_price && m_price &&　strike_price){
+                        short_move_profit = m_price-( f_price - strike_price);
+                        //long_move_profit = (m_price - Math.abs(f_price-strike_price)) + (f_price-f_price)
+                        $("#short_profit").text(short_move_profit.toFixed(2));
+                        //$("#long_profit").text(long_move_profit.toFixed(2));
+                    }
+                }
+            };
+
+            ws_ftx.onclose = function (evt) {
+                console.log("Connection closed.");
+            };
+
+            /** fetch api url by cors-anywhere */
+            // fetch MOVE strike price
+            const cors = 'https://cors-anywhere.herokuapp.com/'; // use cors-anywhere to fetch api data
+            const url = 'https://ftx.com/api/futures/BTC-MOVE-2020Q4/stats'; // origin api url
+            $.get(cors+url, function(data) {
+                console.log(data);
+                strike_price = data["result"].strikePrice.toFixed(2)
+                $("#move_strike").text(strike_price);
+            });
+
+        })
+    </script>
+    <div>
+        <h3 align="center">FTX Move Arbitrage Calculator</h3>
+        <table style="width: 100%" border="1">
+
+            <tr style="width: 50%">
+                <th align="center"></th>
+                <th align="center">MOVE strike Price</th>
+                <th align="center">MOVE current Price</th>
+                <th align="center">BTC Price</th>
+                <th align="center">Profit</th>
+            </tr>
+            <tr>
+                <th>Long Move</th>
+                <td rowspan="2" align="center" >
+                    <p id="move_strike"></p>
+                </td>
+                <td rowspan="2" align="center">
+                    <p id="move_price"></p>
+                </td>
+                <td rowspan="2" align="center">
+                    <p id="btc_price"></p>
+                </td>
+                <td align="center">
+                    <p style="color:red;font-size:120%;background-color:yellow;" id="long_profit" ></p>
+                </td>
+            </tr>
+            <tr style="width: 50%">
+                <th>Short move</th>
+
+                <td align="center">
+                    <p style="color:red;font-size:120%;background-color:yellow;" id="short_profit"></p>
+                </td>
+            </tr>
+        </table>
+    </div>
+    <hr>
+    <div>
+        <h3 align="center">Sell Price Calculator</h3>
+        <table style="width: 100%" border="1">
+
+            <tr style="width: 50%">
+                <th align="center"></th>
+                <th align="center">Buy Price</th>
+                <th align="center">Size</th>
+                <td align="center">Cost Price(With Fee)</td>
+                <td align="center">Minimum Sell Price </td>
+            </tr>
+            <tr>
+                <th>Trading fee:0.015%</th>
+                <td rowspan="2" align="center">
+                    <input id="p_Buy" type="number" />
+                </td>
+                <td rowspan="2" align="center">
+                    <input id="p_BuyAm" type="number" />
+                </td>
+                <td align="center">
+                    <input id="p_BuyOuput15" type="number" readonly />
+                </td>
+                <td align="center">
+                    <input id="p_sellOuput15" type="number" readonly />
+                </td>
+            </tr>
+            <tr style="width: 50%">
+                <th>Trading fee:0.025%</th>
+                <td align="center">
+                    <input id="p_BuyOuput25" type="number" readonly />
+                </td>
+                <td align="center">
+                    <input id="p_sellOuput25" type="number" readonly />
+                </td>
+            </tr>
+        </table>
+    </div>
+    <br>
+    <div>   
+        <table border="1">
+            <tr>
+                <th>
+                </th>
+                <th>
+                    Sell Price lookup table
+                  </th>
+            </tr>
+            <tr>
+                <th>
+                    10% Profit
+                </th>
+                <td align="center">
+                    <h8 id="10p"></h8>
+                </td>
+            </tr>
+            <tr>
+                <th>
+                    20% Profit
+                </th>
+                <td align="center">
+                    <h8 id="20p"></h8>
+                </td>
+            </tr>
+            <tr>
+                <th>
+                    30% Profit
+                </th>
+                <td align="center">
+                    <h8 id="30p"></h8>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <hr>
+    <h3 align="center">BTC Price(Bitmex)</h3>
+
+    <div>
+
+        <table align="left" border="1">
+            <tr>
+                <!--<th><h3 align="center">Bitmex價格</h3></th>-->
+                <th style="width:50%">BTC Price(Bitmex)</th>
+
+                <th style="width:50%">Alert Price </th>
+            </tr>
+            <tr>
+                <td align="center"><h1 id="BMP"></h1></td>
+                <td align="center"><input id="BMP_Input" type="number" /></td>
+            </tr>
+            <tr>
+                <td align="center"><button id="Bon" onclick="N_on()">Turn On</button></td>
+                <td align="center"><button id="Bon" onclick="N_off()">Turn Off</button></td>
+
+            </tr>
+        </table>
+        <audio id="chatAudio">
+            <source src="https://drive.google.com/uc?export=download&id=0B46W9dD5qhflTllXX2JESlhzNVU" type="audio/ogg">
+        </audio>
+    </div>
+
+</body>
+</html>
